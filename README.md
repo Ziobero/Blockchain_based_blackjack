@@ -7,7 +7,7 @@ This is the repository created for the group project for Fintech and Blockchain 
 - Roscioli Dimitri.
 
 ## Goal of the project
-The goal of this project is to deliver a prototype of a blockchain-based blackjack software built as an Ethereum smart contract that exploits the characteristics of Ethereum blockchain to deliver a transparent and fairer way of playing blackjack. The main advantage of this new implementation relies on its transparency: in fact, players can see how the algorithm works behind the scenes, while in a typical blackjack software written for an online casino nobody knows what’s inside this black box (apart from the casino itself).
+The goal of this project is to deliver a prototype of a blockchain-based blackjack software built as an Ethereum smart contract that exploits the characteristics of Ethereum blockchain to deliver a fairer way of playing blackjack. The main advantage of this new implementation relies on its transparency: in fact, players can see how the algorithm works behind the scenes, while in a typical blackjack software written for an online casino nobody knows what’s inside this black box (apart from the casino itself).
 
 ## How the game works 
 Apart from the currency used and the system deployed to distribute cards to the player and the dealer, the rules will be the same as the ones of the classic Blackjack. Gamers can use their ETH stored in some wallet as currency to place their bets and the algorithm will distribute cards in a total random way. The Blackjack smart contract will work as follows: 
