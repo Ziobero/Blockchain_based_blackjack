@@ -12,6 +12,6 @@ The goal of this project is to deliver a prototype of a blockchain-based blackja
 ## File exploration
  In this GitHub repository you can find 3 different folders:
  - `\documentation` - stores a `contrib.md` file where you cand find the daily contribution of each team member;
- - `\src` -  it stores the code sources that we looked at to help us develop our BlackJackChain smart contract;
+ - `\src` -  it stores a `INSTALL` file and the code sources that we studied to help us develop our BlackJackChain smart contract;
  - `\summary` - it stores a report as well as a presentation where we explain respectively the technical part and the business part of the project.
  Finally, the `BlackJackChain` file contains the code that must be compiled in the remix platform.
