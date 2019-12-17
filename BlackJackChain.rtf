@@ -1,0 +1,297 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2511
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww20140\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 /*\
+This smart contract allows users having an ethereum wallet to play Blackjack exploiting the advantages of the blockchain technology.\
+The assumptions that the contract entails are:\
+    - single player only: the game is simply you against the dealer;\
+    - bet amount: the player can place a bet but it must be less than the expected block reward;\
+    - no insurance: player cannot place an insurance in case the dealer's first card is an ace;\
+    - no double split: player cannot split its hand in case it has 2 or more identical cards;\
+    - payoff for blackjack: in case the player gets Blackjack (also 10+ace is considered as blackjack) it will be paid 5:2;\
+    - dealer hits 16 or less: dealer needs to have at least 17 to stop asking for new cards.\
+*/\
+\
+pragma solidity ^0.4.26;\
+\
+// Define the owner of the smart contract\
+contract owned \{  \
+    address public contract_creator;\
+    \
+    function owned() public \{\
+        contract_creator = msg.sender;\
+    \}\
+    \
+    modifier onlyCreator \{\
+        require(msg.sender == contract_creator);\
+        _;\
+    \}\
+    \
+    function ShiftOwnership(address newOwner) onlyCreator public \{\
+        contract_creator = newOwner;\
+    \}\
+\}\
+    \
+\
+// Define the BlackJack smart contract\
+contract BlackJack is owned \{\
+    \
+    enum Subject \{Gamer, Dealer\}                        // define the entities that will play the game\
+    uint256 PlayFee;                                    // cost to play a single hand\
+    uint256 OngoingGames;                               // to guarantee that the casino has enough money in the contract to pay you if you win\
+    uint256 counter;                                    // to have a counter\
+    uint RandomNumber;                                  // random number from 1 to 312\
+    uint GeneratedNumber;                               // random number from 1 to 312; we used it to check if already picked\
+    uint LastGeneratedNumber;                           // if it has not already been picked, the card is given to the subject\
+    uint[] List;                                        // List containing Generated Numbers\
+    \
+    mapping(address => bool) public Acefordealer;       // keep track of the ace given to the dealer; we use bool because we just store whether the dealer receives an ace or not\
+    mapping(address => uint) public HandValueDealer;    // address is the person playing and then the data we want; uint8 is the value of the dealersHand\
+    mapping(address => bool) public Aceforgamer;        // keep track of the ace given to the dealer\
+    mapping(address => uint) public HandValueGamer;     // store the value of the hand of the player\
+    mapping(address => bool) public BlackjackforGamer;  // store whether the player has blackjack\
+\
+    event CardisGiven(address gamer, Subject toSubject, uint card);  // event when a card is hit. It takes the address of the player, its entity and the card that is hit\
+    event GameisOver(address gamer, Subject SubjectChampion);        // event when the game is over. It gives us the entity that won the hand\
+    \
+\
+    // Define the constructor where we define the cost to play\
+    function GameBlackjack(uint256 costToPlay) payable public \{     \
+        uint256 PlayFee = msg.value;\
+    \}\
+\
+\
+    // To make sure the game continues (to put funds in the contract so that if someone wins, the contract can still go on)\
+    function () payable public \{\}\
+    \
+    \
+    // Let's start the game\
+    function StartPlaying() payable public \{\
+        require(HandValueDealer[msg.sender] == 0);	                        // to make sure you play one game at time\
+        require(msg.value == PlayFee);	                                    // if the player does not send the right amount of ETH this line produces an error and the contract will not start the game\
+        require(msg.value <= (200000000 + 2 * block.gaslimit)/100000000);   // if the bet placed by the player is bigger than the expected block reward it produces an error (we used such weird numbers since operations between non-integer numbers are not yet implemented)\
+\
+        // We also want to be sure to have enough money in the contract to pay all players that could win\
+        // for every game in progress we would assume that in case of winning we give you \
+        // the cost*2 back --> so you pay us 1 ether to start the game, and if you win we pay you 2 ether\
+        require(this.balance >= PlayFee * 5/2 * (OngoingGames + 1));\
+\
+        // if requirements are satisfied the game can start\
+        OngoingGames++;\
+    \
+        // hit one card to the dealer and two to the player\
+        giveCard(Subject.Gamer);\
+        giveCard(Subject.Dealer);\
+        giveCard(Subject.Gamer);\
+        \
+        // the player scores Blackjack if it has 21 with the first two cards\
+        if(HandValueGamer[msg.sender] == 11 && Aceforgamer[msg.sender]) \{\
+            BlackjackforGamer[msg.sender] = true;\
+            // if Players gets BlackJack he wins\
+            EndGame(Subject.Gamer);                       \
+        \} else \{\
+            BlackjackforGamer[msg.sender] = false;\
+        \}\
+    \}\
+\
+\
+    // Generate a random number that will be used in the hitCard function\
+    function GenerateRandomNumber() internal returns (uint Number) \{\
+        counter++; \
+        // the following line of code is just a way to obtain random \
+        RandomNumber = uint(keccak256(now, blockhash(block.number - 1), counter));\
+        return uint(RandomNumber % 312 + 1); // [1, 312] // this takes the numbers stored in value and gives us a number that goes from 1 to 312\
+    \}\
+    \
+    \
+    // Check if the Generated Number is already in the List\
+    function TransformNumberToCard() internal returns (uint Number) \{ \
+        GeneratedNumber = GenerateRandomNumber();\
+        uint ArrayLength = List.length;\
+        bool found = false;\
+        uint i= 0;\
+        while (i <= ArrayLength) \{\
+            i ++;\
+            if(i > ArrayLength) \{ \
+                found = false;\
+                break;                      // if the generated number is not in the List --> break\
+            \}\
+            if (List[i - 1] == GeneratedNumber) \{\
+                found = true;\
+                GeneratedNumber = GenerateRandomNumber();\
+                i = 0;\
+            \}\
+        \}\
+        if(found == false)\{\
+            List.push(GeneratedNumber);     // append the new number to the List\
+        \}\
+           \
+    // Last Number appended in the List is transformed into a card between 1 and 13\
+        uint NewArrayLength = List.length;\
+        LastGeneratedNumber = List[NewArrayLength]; // pick the last appended Number\
+        return uint(LastGeneratedNumber % 13 + 1); // transform in a value from 1 to 13\
+    \}\
+    \
+    \
+     // Hit a card to the given subject\
+    function giveCard(Subject subject) internal \{\
+        // generate a card using TransferNumberToCard function  \
+        uint card = TransformNumberToCard();             // [1-13] so the card is from 1 to 13 inclusive \
+        // show the card value.     \
+        uint ValueofCard = card; \
+        \
+        if(ValueofCard > 10) \{                           // J/Q/K --> Jack, Queen, King\
+            ValueofCard = 10;                            // if the card value is greater than 10 we consider it as a 10\
+        \}\
+        \
+        if(subject  == Subject.Gamer) \{	                 // if the subject is the player\
+            HandValueGamer[msg.sender] += ValueofCard;   // add the value of the drawn card\
+            if(ValueofCard == 1) \{ 				         // if the card is an Ace we have to keep track of this \
+                Aceforgamer[msg.sender] = true;\
+            \}\
+        \} else \{                                         // if the subject is a Dealer\
+            HandValueDealer[msg.sender] += ValueofCard;  // the value of the hand is incremented by the card hit to the dealer\
+            if(ValueofCard == 1) \{ 				         // also here, if the card is an Ace we have to keep track of this\
+                Acefordealer[msg.sender] = true;\
+            \}\
+        \}\
+        \
+    CardisGiven(msg.sender, subject, card);              // store in the contract the card value\
+    \}\
+    \
+    \
+    // Determine the conditions to give a card or end the game\
+    function Card() public \{\
+        // when you hit, the requirement is that a game is in progress (dealer hand value is different from zero). If it is met, give a card to the subject\
+        require(HandValueDealer[msg.sender] != 0);\
+        giveCard(Subject.Gamer);\
+        \
+        // if the player has more than 21 stop the game, otherwise if he/she has 21 he/she stands\
+        if(BustedGamer()) \{\
+            EndGame(Subject.Dealer);\
+        \} else if(Value21forGamer()) \{\
+            Stand();\
+        \}\
+    \}\
+    \
+    // Implement the stand function\
+    function Stand() public \{\
+        require(HandValueDealer[msg.sender] != 0);                         // the player stands only if he\'92s having a game in progress (requirement) \
+        \
+		// calculare the score of the player\
+        uint gamerFinalValue = HandValueGamer[msg.sender];\
+        if(gamerFinalValue <= 11 && Aceforgamer[msg.sender]) \{          // if the player has a ace and it has less than 11, add 10\
+            gamerFinalValue+= 10;\
+        \}\
+        // continue distributing cards to the dealer if it has less than 16 or it has less than the value of the player\
+        while(HandValueDealer[msg.sender] <= 16 || HandValueDealer[msg.sender] < HandValueGamer[msg.sender]) \{\
+            \
+            if(Acefordealer[msg.sender]==true) \{\
+                // check whether the dealer has an ace\
+                \
+                if(HandValueDealer[msg.sender] >= 7 && HandValueDealer[msg.sender] <= 11) \{     // check whether the hands value of the dealer is between 7 and 11\
+                    HandValueDealer[msg.sender] += 10;\
+                    \
+                    if(HandValueDealer[msg.sender] >= HandValueGamer[msg.sender]) \{             // check whether the hands value of the dealer is bigger than or equal to the one of the player\
+                        HandValueDealer[msg.sender] -= 10;\
+                        break;\
+                    \} else \{                                                                    // if the hands value of the dealer is not bigger than or equal to the one of the player\
+                        HandValueDealer[msg.sender] -= 10;\
+                        giveCard(Subject.Dealer);\
+                    \}\
+                \}\
+                \
+                if(HandValueDealer[msg.sender] >= 17) \{                                         // check whether the hands value of the dealer is bigger than or equal to 17\
+                    if(HandValueDealer[msg.sender] >= HandValueGamer[msg.sender]) \{             // check whether the hands value of the dealer is bigger than or equal to the one of the player\
+                        break;\
+                    \} else \{                                                                    // if the hands value of the dealer is not bigger than or equal to the one of the player\
+                        giveCard(Subject.Dealer);\
+                    \}\
+                \
+                \} else \{                                                                        // if the hands value of the dealer is less than 17\
+                     giveCard(Subject.Dealer);\
+                    \}\
+            \} else \{                                                                            // if the dealer has not an ace\
+            \
+                if(HandValueDealer[msg.sender] >= 17) \{                                         // check whether the hands value of the dealer is bigger than or equal to 17\
+                \
+                    if(HandValueDealer[msg.sender] >= HandValueGamer[msg.sender]) \{             // check whether the hands value of the dealer is bigger than or equal to the one of the player\
+                        break;\
+                    \} else \{                                                                    // if the hands value of the dealer is not bigger than or equal to the one of the player\
+                        giveCard(Subject.Dealer);\
+                    \}\
+                \} else \{                                                                        // if the hands value of the dealer is less than 17\
+                        giveCard(Subject.Dealer);\
+                \}\
+            \}\
+        \}\
+\
+        // calculate the final score of the hand of the dealer\
+        uint dealerFinalValue = HandValueDealer[msg.sender];\
+                if(dealerFinalValue <= 11 && Acefordealer[msg.sender]) \{\
+            dealerFinalValue += 10;                                         // if the dealer has a ace and it has less than 11, add 10\
+        \}\
+\
+       // If the dealer scores more than 21, he will loose the hand and the player will win \
+        if(dealerFinalValue > 21) \{ 		                                // Dealer busted\
+            EndGame(Subject.Gamer);                                         // Player wins \
+        \} else \{\
+            EndGame(Subject.Dealer);	                                    // Dealer wins \
+        \}\
+    \}\
+    \
+    \
+    // If player has 21, he/she stands automatically\
+    function Value21forGamer() internal view returns (bool value21gamer ) \{\
+        if(HandValueGamer[msg.sender] == 21) \{		                        // in case the player has 21\
+            return true;\
+        \}\
+       \
+        if(HandValueGamer[msg.sender] == 11 && Aceforgamer[msg.sender]) \{	// in case the player has 11 and an ace, it is converted to 21\
+            return true;\
+        \}\
+        \
+        return false;                                                       // return false if the player has not 21 in any of the two defined cases\
+    \}\
+    \
+        \
+    // If the player scores more than 21, it gets busted \
+    function BustedGamer() internal view returns (bool bustedforgamer) \{\
+        return HandValueGamer[msg.sender] > 21;\
+    \}\
+    \
+    \
+    // Determine who is the winner. Based on this info, pay the player or keep the money\
+    function EndGame(Subject SubjectChampion) internal \{\
+        OngoingGames--;	                                                                // a game has ended, so decrease the counter by one\
+\
+        if(SubjectChampion == Subject.Gamer) \{                                          // if the winning entity is the player, give to the player the amount he won\
+            if(BlackjackforGamer[msg.sender] == true) \{	\
+            msg.sender.transfer((PlayFee * 5)/2);	                                    \
+            \} else \{\
+            msg.sender.transfer(PlayFee * 2);\
+            \}\
+        \}\
+        \
+        GameisOver(msg.sender, SubjectChampion); // reset the counter and let the player start another game\
+             \
+        Acefordealer[msg.sender] = false;	     // reset the value\
+        Aceforgamer[msg.sender] = false; 	     // reset the value\
+        BlackjackforGamer[msg.sender] = false;   // reset the value\
+        HandValueDealer[msg.sender] = 0;         // reset the value \
+        HandValueGamer[msg.sender] = 0;          // reset the value\
+    \}\
+    \
+    \
+    // Stop the game and withdraw the ETH we gained. This function allows us to specify how much to withdraw\
+    function payMe(uint256 AmountToWithdraw) public onlyCreator \{\
+       // pay attention because we can't withdraw if we do not have enough money to pay in case everyone who is playing will win\
+       // give us the ETH specified only if we exceed the minimum amount of ETH required to pay all potential winners\
+        require(this.balance >= OngoingGames * PlayFee * 5/2 + AmountToWithdraw);\
+        contract_creator.transfer(AmountToWithdraw);\
+    \}\
+\}}
